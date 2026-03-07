@@ -3,48 +3,196 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EverNodes</title>
+    <title>EverNodes — Knowledge Map</title>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
-    <div id="app">
-        <div id="input-screen">
-            <h1>EverNodes</h1>
-            <p class="subtitle">See the structure of anything you want to learn</p>
+<canvas id="starfield-canvas"></canvas>
 
-            <div class="input-group">
-                <label>What do you want to learn?</label>
-                <input type="text" id="goal" placeholder="e.g. Machine Learning" />
+<div id="app">
+
+    <!-- ════════════════ INPUT SCREEN ════════════════ -->
+    <div id="input-screen">
+
+        <div id="saved-sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-icon">✦</span>
+                <span>Saved Maps</span>
             </div>
-
-            <div class="input-group">
-                <label>What do you already know? <span class="optional">(optional)</span></label>
-                <input type="text" id="prior" placeholder="e.g. Python, basic algebra" />
+            <div id="saved-list">
+                <p class="empty-state">No saved maps yet.<br>Generate your first one!</p>
             </div>
-
-            <button id="generate-btn">Generate My Map</button>
-            <p id="status"></p>
         </div>
 
-        <div id="graph-screen" style="display:none">
-            <div id="header">
-                <button id="back-btn">← New Topic</button>
-                <h2 id="graph-title"></h2>
-                <div id="legend">
-                    <span class="dot green"></span> Already know
-                    <span class="dot white"></span> To learn
+        <div id="input-center">
+            <div class="brand">
+                <div class="brand-orbit-wrap">
+                    <div class="brand-orbit-ring ring1"></div>
+                    <div class="brand-orbit-ring ring2"></div>
+                    <div class="brand-mark">✦</div>
                 </div>
+                <h1>EverNodes</h1>
+                <!-- Restored original subtitle -->
+                <p class="tagline">Every subject is a cosmos. <em>Enter it.</em></p>
             </div>
-            <div id="graph-container"></div>
-            <div id="node-info">
-                <p id="node-description">Click any node to learn more about it</p>
+
+            <div class="form-card">
+                <div class="input-row">
+                    <label>What do you want to learn?</label>
+                    <!-- No scrollbar, overflow hidden, fixed height -->
+                    <textarea id="goal" rows="3"
+                        placeholder="e.g. Machine Learning, Ancient Rome, Jazz Theory…"></textarea>
+                </div>
+
+                <div class="input-row">
+                    <label>What do you already know? <span class="hint">(optional)</span></label>
+                    <input type="text" id="prior"
+                        placeholder="e.g. Basic math, no experience…"
+                        autocomplete="off" />
+                </div>
+
+                <div class="input-row">
+                    <label>Depth of exploration</label>
+                    <div class="level-tabs">
+                        <button class="level-tab active" data-level="beginner">Beginner</button>
+                        <button class="level-tab" data-level="intermediate">Intermediate</button>
+                        <button class="level-tab" data-level="expert">Expert</button>
+                    </div>
+                </div>
+
+                <button id="generate-btn" class="primary-btn">
+                    <span id="btn-text">Generate Map</span>
+                    <span id="btn-loader" class="hidden">
+                        <span class="spinner"></span>Building map…
+                    </span>
+                </button>
+                <p id="status"></p>
             </div>
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <!-- ════════════════ GRAPH SCREEN ════════════════ -->
+    <div id="graph-screen" class="hidden">
+
+        <div id="topbar">
+            <div class="topbar-left">
+                <button id="back-btn" class="ghost-btn">← New Topic</button>
+                <div class="topic-info">
+                    <span id="graph-title" class="topic-title"></span>
+                    <span id="level-badge" class="level-chip"></span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div class="progress-wrap">
+                    <span id="progress-text" class="progress-label">0 / 0 learned</span>
+                    <div class="progress-bar-track">
+                        <div id="progress-bar" class="progress-bar-fill"></div>
+                    </div>
+                </div>
+                <div class="autosave-wrap">
+                    <span class="autosave-label">Auto-save</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="autosave-toggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <button id="fit-btn"  class="action-btn">⊹ Reset View</button>
+                <button id="save-btn" class="action-btn">✦ Save Map</button>
+            </div>
+        </div>
+
+        <div id="legend-bar">
+            <div class="legend-item"><span class="dot root-dot"></span>Topic Root</div>
+            <div class="legend-item"><span class="dot concept-dot"></span>Concept</div>
+            <div class="legend-item"><span class="dot detail-dot"></span>Detail</div>
+            <div class="legend-sep">·</div>
+            <div class="legend-item"><span class="dot learned-dot"></span>Learned — turns white</div>
+            <div class="legend-sep">·</div>
+            <div class="legend-hint">Click to preview · Double-click to enter · Drag to rearrange</div>
+        </div>
+
+        <div id="stabilize-overlay">
+            <div class="stabilize-inner">
+                <div class="stabilize-icon">✦</div>
+                <p>Building your knowledge map…</p>
+                <div class="stab-bar-track">
+                    <div id="stabilize-bar" class="stab-bar-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="graph-container"></div>
+
+        <!-- ══ PORTAL — immersive node drill-down ══ -->
+        <div id="portal-overlay" class="hidden">
+            <div id="portal-backdrop"></div>
+            <div id="portal-frame">
+                <div id="portal-header">
+                    <div id="portal-breadcrumb">
+                        <span id="portal-topic-crumb" class="crumb-topic"></span>
+                        <span class="crumb-sep">›</span>
+                        <span id="portal-node-crumb" class="crumb-node"></span>
+                    </div>
+                    <div class="portal-header-actions">
+                        <span id="portal-nav-counter" class="nav-counter"></span>
+                        <button id="portal-prev-btn" class="nav-btn">‹ Prev</button>
+                        <button id="portal-next-btn" class="nav-btn">Next ›</button>
+                        <button id="portal-close-btn" class="portal-close">✕ Exit</button>
+                    </div>
+                </div>
+
+                <div id="portal-parent">
+                    <div id="portal-parent-cat" class="cat-badge"></div>
+                    <h2 id="portal-parent-label"></h2>
+                    <p id="portal-parent-detail" class="portal-detail-text"></p>
+                    <button id="portal-mark-btn" class="learn-btn">✦ Mark Learned</button>
+                </div>
+
+                <div id="portal-children-section">
+                    <div class="portal-children-header">
+                        <div class="portal-divider-line"></div>
+                        <span class="portal-children-label">Deeper Concepts</span>
+                        <div class="portal-divider-line"></div>
+                    </div>
+                    <div id="portal-children-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick-info panel -->
+        <div id="node-panel">
+            <div id="panel-drag-handle"><div class="drag-pip"></div></div>
+            <div id="panel-content">
+                <div class="panel-placeholder">
+                    <span>✦</span>
+                    <p>Click any node to preview · Double-click to enter it</p>
+                </div>
+                <div id="panel-node-info" class="hidden">
+                    <div class="panel-row">
+                        <div>
+                            <span id="panel-cat" class="cat-badge"></span>
+                            <h3 id="panel-label"></h3>
+                        </div>
+                        <div class="panel-btns">
+                            <button id="panel-enter-btn" class="ghost-btn sm">Enter ↗</button>
+                            <button id="panel-learn-btn" class="learn-btn sm">✦ Mark Learned</button>
+                        </div>
+                    </div>
+                    <p id="panel-desc" class="panel-desc"></p>
+                    <div id="panel-chips" class="chips-row"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="/static/script.js"></script>
 </body>
 </html>
