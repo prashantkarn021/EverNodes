@@ -1,0 +1,137 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: #0f172a;
+    color: #f1f5f9;
+    font-family: 'Inter', system-ui, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#app { height: 100vh; }
+
+#input-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 24px;
+    padding: 40px;
+}
+
+h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #6366f1, #22c55e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+    color: #94a3b8;
+    font-size: 1.1rem;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 480px;
+}
+
+label { color: #cbd5e1; font-size: 0.9rem; }
+.optional { color: #475569; }
+
+input {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #f1f5f9;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+input:focus { border-color: #6366f1; }
+
+button {
+    background: #6366f1;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 32px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+button:hover { background: #4f46e5; }
+button:disabled { background: #334155; cursor: not-allowed; }
+
+#status { color: #94a3b8; font-size: 0.9rem; min-height: 20px; }
+
+#graph-screen {
+    flex-direction: column;
+    height: 100vh;
+}
+
+#header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid #1e293b;
+    background: #0f172a;
+}
+
+#back-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 400;
+}
+
+#back-btn:hover { background: #1e293b; }
+
+#legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+
+.dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 4px;
+}
+
+.dot.green { background: #22c55e; }
+.dot.white { background: #1e293b; border: 1px solid #475569; }
+
+#graph-container {
+    flex: 1;
+    background: #0f172a;
+}
+
+#node-info {
+    padding: 16px 24px;
+    border-top: 1px solid #1e293b;
+    background: #0f172a;
+    min-height: 56px;
+}
+
+#node-description {
+    color: #94a3b8;
+    font-size: 0.95rem;
+    text-align: center;
+}

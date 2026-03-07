@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EverNodes</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div id="app">
+        <div id="input-screen">
+            <h1>EverNodes</h1>
+            <p class="subtitle">See the shape of anything you want to learn</p>
+
+            <div class="input-group">
+                <label>What do you want to learn?</label>
+                <input type="text" id="goal" placeholder="e.g. Machine Learning" />
+            </div>
+
+            <div class="input-group">
+                <label>What do you already know? <span class="optional">(optional)</span></label>
+                <input type="text" id="prior" placeholder="e.g. Python, basic algebra" />
+            </div>
+
+            <button id="generate-btn">Generate My Map</button>
+            <p id="status"></p>
+        </div>
+
+        <div id="graph-screen" style="display:none">
+            <div id="header">
+                <button id="back-btn">← New Topic</button>
+                <h2 id="graph-title"></h2>
+                <div id="legend">
+                    <span class="dot green"></span> Already know
+                    <span class="dot white"></span> To learn
+                </div>
+            </div>
+            <div id="graph-container"></div>
+            <div id="node-info">
+                <p id="node-description">Click any node to learn more about it</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
