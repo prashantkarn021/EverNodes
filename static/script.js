@@ -82,7 +82,12 @@ function renderGraph(data, goal) {
             }
         },
         physics: false,
-        interaction: { hover: true }
+        autoResize: false,
+        interaction: { 
+            hover: true,
+            dragView: true,
+            zoomView: false 
+        }
     });
 
     network.on("click", function(params) {
