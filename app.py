@@ -1,12 +1,9 @@
 """
 EverNodes — Flask backend
-API:      Groq Cloud  (https://console.groq.com)
-Model:    llama-3.3-70b-versatile  (served by Groq)
-Database: None — all state is stored client-side in the browser's localStorage.
-          Saved maps, node positions, and learned progress live in the user's
-          browser under the key  'evernodes_v3'.
-          If you want server-side persistence in the future, swap localStorage
-          for a SQLite / PostgreSQL / Redis store and add user auth.
+API:   Groq Cloud / meta-llama/llama-4-scout-17b-16e-instruct
+State: browser localStorage only (key 'evernodes_v3')
+
+To change API key: edit GROQ_API_KEY in .env, then restart Flask.
 """
 
 from flask import Flask, request, jsonify, render_template
@@ -15,122 +12,196 @@ import json, os, re
 from dotenv import load_dotenv
 
 load_dotenv()
-app    = Flask(__name__)
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ─── Level configuration ─────────────────────────────────────
-LEVEL_CONFIG = {
-    "beginner":     {"parents": 3, "note": "Use plain language. Build from absolute zero. No jargon."},
-    "intermediate": {"parents": 4, "note": "Balance theory and practice. Use real-world examples."},
-    "expert":       {"parents": 5, "note": "Technical precision. Include nuance, edge-cases, and depth."},
+_raw_key = os.getenv("GROQ_API_KEY", "")
+if not _raw_key or not _raw_key.startswith("gsk_"):
+    print("\n  WARNING: GROQ_API_KEY missing or invalid in .env")
+    print("   Add:  GROQ_API_KEY=gsk_your_key_here  to your .env file.\n")
+
+app    = Flask(__name__)
+client = Groq(api_key=_raw_key or "invalid")
+
+# In-memory topic cache — saves tokens for repeated requests
+_TOPIC_CACHE: dict = {}
+
+TOKEN_BUDGET = {
+    "beginner":     3500,
+    "intermediate": 5000,
+    "expert":       7000,
 }
 
-# ─── System prompt ────────────────────────────────────────────
-# Note on hallucination: LLMs can never be 100% hallucination-free.
-# We reduce it by (a) keeping temperature low (0.2), (b) using a two-phase
-# approach — first validate the topic, then generate — (c) explicitly telling
-# the model to refuse nonsensical inputs, and (d) requiring factual framing
-# ("a real, established subject that can be learned and taught").
+
+LEVEL_NOTE = {
+    "beginner":     "Plain everyday language. Zero jargon. Build from absolute scratch.",
+    "intermediate": "Mix theory and practice. Use real-world examples and applications.",
+    "expert":       "Full technical precision. Include nuance, edge-cases, formal definitions.",
+}
+
 SYSTEM_PROMPT = (
     "You are a strict educational content architect. "
-    "Your ONLY output is raw valid JSON — no markdown, no backticks, no prose. "
-    "You refuse to generate learning maps for nonsensical, offensive, or "
-    "meaningless inputs. If a topic is not a real, learnable subject you return "
-    "exactly: {\"error\":\"invalid_topic\",\"message\":\"<brief reason>\"}"
+    "Output ONLY raw valid JSON — no markdown, no backticks, no explanation. "
+    "Refuse nonsensical inputs by returning: "
+    "{\"error\":\"invalid_topic\",\"message\":\"<reason>\"}"
 )
 
-# ─── Lightweight pre-validation (Python-side, no API call) ───
-# Catches obvious junk before spending an API token.
-JUNK_PATTERN = re.compile(
-    r'^[^a-zA-Z]*$'                  # no letters at all
-    r'|^(.)\1{4,}$'                  # same char repeated 5+ times (e.g. "aaaaa")
-    r'|^[aeiou\s]{1,4}$'             # very short vowel-only strings
-)
 
 def looks_like_junk(text: str) -> bool:
-    """Return True when the input is obviously not a learnable topic."""
     t = text.strip()
     if len(t) < 3:
         return True
-    # All non-alpha (symbols, numbers-only, etc.)
     if not re.search(r'[a-zA-Z]', t):
         return True
-    # Repeated chars: uhhhh, aaaaaa, zzzzz, lmaooo
     if re.fullmatch(r'([a-zA-Z])\1{3,}', t.replace(' ', '')):
         return True
-    # Tiny word count AND looks like random letters (no vowel-consonant pattern)
     words = t.split()
     if len(words) <= 2:
-        letter_only = re.sub(r'[^a-zA-Z]', '', t).lower()
-        vowels = sum(1 for c in letter_only if c in 'aeiou')
-        if len(letter_only) > 2 and vowels / len(letter_only) < 0.05:
-            return True  # e.g. "zzxq", "hhhh", "brrr"
+        letters = re.sub(r'[^a-zA-Z]', '', t).lower()
+        if len(letters) > 2 and sum(1 for c in letters if c in 'aeiou') / len(letters) < 0.05:
+            return True
     return False
 
 
-def build_prompt(goal: str, prior: str, level: str) -> str:
-    cfg       = LEVEL_CONFIG.get(level, LEVEL_CONFIG["beginner"])
-    n_parents = cfg["parents"]
-    n_children= n_parents * 2
-    total     = 1 + n_parents + n_children
-    parent_ids= list(range(2, 2 + n_parents))
-    child_ids = list(range(2 + n_parents, 2 + n_parents + n_children))
+# Per-level detail field templates — shared preamble extracted to avoid token waste
+_DETAIL_PREAMBLE = "ONE single line. Use || to separate parts. No real newlines. Parts in order: "
+_DETAIL_PARTS = {
+    "beginner": (
+        "INTRO: plain sentence what this is || "
+        "BULLET: key idea 1 (≤18 words) || "
+        "BULLET: key idea 2 (≤18 words) || "
+        "BULLET: key idea 3 (≤18 words) || "
+        "NEXT: encouraging sentence or first step || "
+        "RESOURCE: 2-3 free resources e.g. Khan Academy (khanacademy.org), Wikipedia (wikipedia.org)"
+    ),
+    "intermediate": (
+        "INTRO: concept and its role (1 sentence) || "
+        "BULLET: definition (≤22 words) || "
+        "BULLET: how it works (≤22 words) || "
+        "BULLET: real-world example (≤22 words) || "
+        "BULLET: common pitfall (≤22 words) || "
+        "NEXT: connection to adjacent topics || "
+        "RESOURCE: 2-3 quality resources with names and URLs"
+    ),
+    "expert": (
+        "INTRO: precise technical definition (1 sentence) || "
+        "BULLET: formal definition or theorem (≤28 words) || "
+        "BULLET: underlying mechanism (≤28 words) || "
+        "BULLET: concrete technical example (≤28 words) || "
+        "BULLET: edge cases or limitations (≤28 words) || "
+        "BULLET: current research frontier (≤28 words) || "
+        "NEXT: advanced extensions or open questions || "
+        "RESOURCE: 3 authoritative resources (papers, specs, textbooks) with URLs"
+    ),
+}
 
-    parent_edges = ", ".join(
-        f'{{"from":1,"to":{pid},"label":"introduces"}}' for pid in parent_ids
-    )
-    child_edges = ""
-    for i, pid in enumerate(parent_ids):
-        c1 = child_ids[i * 2]
-        c2 = child_ids[i * 2 + 1]
-        child_edges += (
-            f', {{"from":{pid},"to":{c1},"label":"explains"}}'
-            f', {{"from":{pid},"to":{c2},"label":"covers"}}'
+def detail_format(level: str) -> str:
+    return _DETAIL_PREAMBLE + _DETAIL_PARTS.get(level, _DETAIL_PARTS["beginner"])
+
+
+def build_prompt(goal: str, prior: str, level: str) -> str:
+    note    = LEVEL_NOTE[level]
+    det_fmt = detail_format(level)
+
+    # Depth and breadth guidance by level — Groq decides exact counts
+    if level == "beginner":
+        structure_guide = (
+            "Build 2 tiers below the root (tier 1 = main concepts, tier 2 = their details). "
+            "Use 3-5 concept nodes. Each concept gets 1-2 child detail nodes. "
+            "Keep it simple — fewer, well-explained nodes beat many shallow ones."
+        )
+    elif level == "intermediate":
+        structure_guide = (
+            "Build 2-3 tiers below the root. "
+            "Use 4-7 concept nodes. Each concept gets 2-3 children. "
+            "Where a concept is complex enough, add a tier-3 'deep' node beneath its tier-2 children."
+        )
+    else:  # expert
+        structure_guide = (
+            "Build 3-4 tiers below the root. "
+            "Use 5-9 concept nodes. Each concept gets 2-4 children. "
+            "Add tier-3 and tier-4 nodes where the topic genuinely warrants deeper breakdown. "
+            "Do NOT add depth just to fill space — only where it aids understanding."
         )
 
-    # ── Hallucination guard in the prompt itself ──────────────
-    # We tell the model: if the topic is not real or learnable, return an error
-    # JSON instead of fabricating content.  Temperature 0.2 also helps.
-    return f"""TOPIC VALIDATION: Is "{goal}" a real, established subject that can be learned and taught?
-If NO — return: {{"error":"invalid_topic","message":"Not a real learnable subject"}}
-If YES — build the learning map below.
+    return f"""TOPIC CHECK: Is "{goal}" a real subject a person can learn?
+If NO return exactly: {{"error":"invalid_topic","message":"Not a real learnable subject"}}
+If YES continue below.
 
----
-Build a learning path for: "{goal}"
+Topic: "{goal}"
 Prior knowledge: "{prior or 'none'}"
-Depth level: {level.upper()} — {cfg['note']}
+Level: {level.upper()} — {note}
 
-IMPORTANT: Every fact must be accurate and grounded. Do NOT invent terminology,
-fake studies, or fabricated examples. If you are uncertain about a detail, omit it.
+ACCURACY RULE: Only include verifiable facts. Never invent or fabricate. Omit anything uncertain.
 
-Return EXACTLY this JSON with {total} nodes:
+DETAIL FORMAT FOR EVERY NODE:
+{det_fmt}
+
+STRUCTURE — you decide exact counts within the guidance below:
+{structure_guide}
+- Node IDs are sequential integers starting at 1. Root is always ID 1 (tier 0).
+- tier 1 nodes: category "concept". tier 2 nodes: category "detail". tier 3+: category "deep".
+- Each node must have exactly one parent (connected by one incoming edge). No cycles.
+
+Return raw valid JSON only — no markdown, no backticks, no text before or after:
 
 {{
-  "topic": "{goal}",
+  "topic": "short title",
   "level": "{level}",
   "nodes": [
-    {{"id":1,"label":"Short Name","description":"1-sentence overview.","detail":"4-6 accurate, substantive sentences covering the full scope of this topic, why it matters, and what the learner will gain.","category":"root","tier":0}},
-    {{"id":2,"label":"Concept Name","description":"1 sentence.","detail":"4-6 sentences: explain the concept clearly, give a real-world example, and state why it is important in this field.","category":"concept","tier":1}},
-    {{"id":{2+n_parents},"label":"Sub-concept","description":"1 sentence.","detail":"4-6 sentences diving into this sub-concept with accurate mechanics, examples from real practice, and its relationship to the parent concept.","category":"detail","tier":2}}
+    {{"id": 1, "label": "max 4 words", "description": "1-sentence overview", "detail": "INTRO: ... || BULLET: ... || RESOURCE: ...", "category": "root", "tier": 0}},
+    {{"id": 2, "label": "max 4 words", "description": "1 sentence", "detail": "INTRO: ... || BULLET: ... || RESOURCE: ...", "category": "concept", "tier": 1}}
   ],
-  "edges": [{parent_edges}{child_edges}],
+  "edges": [{{"from": 1, "to": 2, "label": "introduces"}}],
   "known": []
 }}
 
-STRICT RULES:
-1. Raw JSON only — zero markdown, zero backticks, zero extra text.
-2. Exactly {total} nodes with sequential IDs 1–{total}.
-3. Node 1 = root. IDs {parent_ids[0]}–{parent_ids[-1]} = concepts. IDs {child_ids[0]}–{child_ids[-1]} = details.
-4. Each node needs: id, label (≤4 words), description (1 sentence), detail (4-6 factual sentences), category, tier.
-5. Root → every concept. Each concept → exactly 2 detail nodes.
-6. No hallucinated facts. No invented references. Verifiable information only."""
+FINAL JSON RULES:
+1. NO literal newline or tab characters inside any string value.
+2. Use || as separator in detail fields only. No backslash-n.
+3. Every opened double-quote must be closed.
+4. Apostrophes fine; double-quotes inside values must be escaped: \\"
+5. Output the COMPLETE JSON in one block — never truncate."""
+
+
+def fix_json_newlines(raw: str) -> str:
+    """Escape bare newlines/tabs inside JSON string values before parsing."""
+    result      = []
+    in_string   = False
+    escape_next = False
+    for ch in raw:
+        if escape_next:
+            result.append(ch)
+            escape_next = False
+            continue
+        if ch == '\\':
+            result.append(ch)
+            escape_next = True
+            continue
+        if ch == '"':
+            result.append(ch)
+            in_string = not in_string
+            continue
+        if in_string:
+            if ch == '\n':
+                result.append('\\n')
+                continue
+            if ch == '\r':
+                continue
+            if ch == '\t':
+                result.append('\\t')
+                continue
+        result.append(ch)
+    return ''.join(result)
 
 
 def extract_json(raw: str) -> dict:
     raw = raw.strip()
+    # Strip markdown fences
     raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
-    raw = re.sub(r'\s*```$', '', raw, flags=re.MULTILINE)
+    raw = re.sub(r'\s*```\s*$',       '', raw, flags=re.MULTILINE)
     raw = raw.strip()
+    # Fix literal newlines inside strings
+    raw = fix_json_newlines(raw)
+
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -138,37 +209,34 @@ def extract_json(raw: str) -> dict:
     s, e = raw.find('{'), raw.rfind('}')
     if s != -1 and e > s:
         try:
-            return json.loads(raw[s:e+1])
+            return json.loads(raw[s:e + 1])
         except json.JSONDecodeError:
             pass
-    return json.loads(re.sub(r',\s*([}\]])', r'\1', raw))
+    cleaned = re.sub(r',\s*([}\]])', r'\1', raw[s:e + 1] if s != -1 and e > s else raw)
+    return json.loads(cleaned)
 
 
 def validate_graph(data: dict) -> dict:
-    # Surface-level error returned by the model for invalid topics
     if "error" in data:
         raise ValueError(data.get("message", "Invalid topic"))
-
-    assert "nodes" in data and "edges" in data, "Missing nodes/edges"
-    assert len(data["nodes"]) >= 3, "Too few nodes"
+    assert "nodes" in data and "edges" in data
+    assert len(data["nodes"]) >= 3
 
     node_ids = {n["id"] for n in data["nodes"]}
     for node in data["nodes"]:
-        assert "id" in node and "label" in node, f"Bad node: {node}"
+        assert "id" in node and "label" in node
         node.setdefault("description", f"Learn about {node['label']}.")
         node.setdefault("detail", node["description"])
-        if node.get("category") not in {"root", "concept", "detail"}:
+        if node.get("category") not in {"root", "concept", "detail", "deep"}:
             node["category"] = "concept"
-        node.setdefault("tier", {"root":0,"concept":1,"detail":2}.get(node["category"],1))
+        node.setdefault("tier", {"root": 0, "concept": 1, "detail": 2, "deep": 3}.get(node["category"], 1))
         words = node["label"].split()
         if len(words) > 5:
             node["label"] = " ".join(words[:4])
 
-    data["edges"] = [e for e in data.get("edges", [])
-                     if e.get("from") in node_ids and e.get("to") in node_ids]
+    data["edges"] = [e for e in data.get("edges", []) if e.get("from") in node_ids and e.get("to") in node_ids]
     for edge in data["edges"]:
         edge.setdefault("label", "→")
-
     known = data.get("known", [])
     data["known"] = [k for k in known if k in node_ids] if isinstance(known, list) else []
     return data
@@ -185,21 +253,26 @@ def ever_nodes():
     if not body:
         return jsonify({"error": "invalid_request", "message": "No JSON body"}), 400
 
-    goal  = body.get("goal", "").strip()
+    goal  = body.get("goal",  "").strip()
     prior = body.get("prior", "").strip()
     level = body.get("level", "beginner").lower()
 
-    # ── Python-side junk filter (fast, no API cost) ──────────
     if not goal:
         return jsonify({"error": "missing_goal", "message": "Please enter a topic."}), 400
     if looks_like_junk(goal):
         return jsonify({
             "error":   "invalid_topic",
-            "message": f'"{goal}" doesn\'t look like a learnable topic. Try something like "Machine Learning" or "Ancient Rome".'
+            "message": f'"{goal}" doesn\'t look like a learnable topic. Try something like "Machine Learning" or "Ancient Rome".',
         }), 422
-
-    if level not in LEVEL_CONFIG:
+    if level not in TOKEN_BUDGET:
         level = "beginner"
+
+    # Check in-memory cache — zero tokens if already generated this session
+    cache_key = f"{goal.lower().strip()}::{level}"
+    if cache_key in _TOPIC_CACHE:
+        cached = dict(_TOPIC_CACHE[cache_key])
+        cached["from_cache"] = True
+        return jsonify(cached)
 
     prompt     = build_prompt(goal, prior, level)
     last_error = None
@@ -207,31 +280,43 @@ def ever_nodes():
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user",   "content": prompt},
                 ],
-                temperature=0.2,   # lower = more factual, less hallucination
-                max_tokens=3000,
+                temperature=0.2,
+                max_tokens=TOKEN_BUDGET[level],
             )
             raw       = response.choices[0].message.content
             parsed    = extract_json(raw)
             validated = validate_graph(parsed)
             validated["topic"] = validated.get("topic", goal)
             validated["level"] = level
+            _TOPIC_CACHE[cache_key] = validated
             return jsonify(validated)
 
         except ValueError as e:
-            # Model said the topic is invalid
             return jsonify({"error": "invalid_topic", "message": str(e)}), 422
         except (AssertionError, KeyError, json.JSONDecodeError) as e:
-            last_error = f"Attempt {attempt+1}: {e}"
+            last_error = f"Attempt {attempt + 1}: {type(e).__name__}: {e}"
         except Exception as e:
-            last_error = str(e)
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower():
+                return jsonify({
+                    "error":   "rate_limit",
+                    "message": "Daily token limit reached. Update GROQ_API_KEY in your .env file with a fresh key from console.groq.com, then restart Flask (Ctrl-C → python app.py).",
+                }), 429
+            last_error = err_str
             break
 
     return jsonify({"error": "generation_failed", "message": last_error}), 500
+
+
+@app.route("/cache/clear", methods=["POST"])
+def clear_cache():
+    _TOPIC_CACHE.clear()
+    return jsonify({"cleared": True})
 
 
 if __name__ == "__main__":

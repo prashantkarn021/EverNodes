@@ -1,8 +1,4 @@
-/* ═══════════════════════════════════════════════════════════
-   EVERNODES — KNOWLEDGE MAP SCRIPT
-   No twinkle · Sticky nodes · Gold/Cyan/Green palette
-   Auto-save positions · Portal explorer
-   ═══════════════════════════════════════════════════════════ */
+/* EverNodes — Knowledge Map */
 
 const STORAGE_KEY = 'evernodes_v3';
 
@@ -16,6 +12,9 @@ let selectedNodeId = null;
 let currentScale   = 1.0;
 let autoSaveOn     = true;
 let autoSaveTimer  = null;
+let defaultPositions = {};  // positions right after first stabilisation
+let userPositions    = {};  // positions before a reset (for undo)
+let hasUndoState     = false;
 
 // Portal
 let explorerList  = [];
@@ -25,17 +24,20 @@ let explorerIndex = 0;
 // NODE VISUAL CONFIG — category colours (gold/cyan/green)
 // ═══════════════════════════════════════════════════════════
 const NODE_CFG = {
-    root:    { bg: '#1a1200', border: '#f0c060', hi: '#fff5cc', glow: 'rgba(240,192,96,',  size: 34 },
-    concept: { bg: '#001e24', border: '#40d8e8', hi: '#ccf7ff', glow: 'rgba(64,216,232,',  size: 28 },
-    detail:  { bg: '#001a0e', border: '#4ade80', hi: '#ccffe0', glow: 'rgba(74,222,128,',  size: 22 },
+    root:    { bg: '#1a1200', border: '#f0c060', glow: 'rgba(240,192,96,',  fontSize: 14, maxW: 190, radius: 10 },
+    concept: { bg: '#001e24', border: '#40d8e8', glow: 'rgba(64,216,232,',  fontSize: 13, maxW: 165, radius: 8  },
+    detail:  { bg: '#001a0e', border: '#4ade80', glow: 'rgba(74,222,128,',  fontSize: 12, maxW: 145, radius: 7  },
+    deep:    { bg: '#0e0018', border: '#a78bfa', glow: 'rgba(167,139,250,', fontSize: 11, maxW: 130, radius: 6  },
 };
-const LEARNED_CFG = { bg: '#e8f4ff', border: '#ffffff', hi: '#ffffff', glow: 'rgba(255,255,255,', size: 26 };
+const LEARNED_CFG = { bg: '#e8f4ff', border: '#ffffff', glow: 'rgba(255,255,255,', fontSize: 13, maxW: 165, radius: 8 };
 
 // ─── Build one vis.js node ───────────────────────────────────
+// shape:'box' is the only vis.js shape that renders text INSIDE the node boundary.
+// widthConstraint caps the box width; text wraps or we abbreviate at low zoom.
 function buildVisNode(node) {
     const isLearned = learnedNodes.has(node.id);
-    const cat  = node.category || 'concept';
-    const cfg  = isLearned ? LEARNED_CFG : (NODE_CFG[cat] || NODE_CFG.concept);
+    const cat = node.category || 'concept';
+    const cfg = isLearned ? LEARNED_CFG : (NODE_CFG[cat] || NODE_CFG.concept);
 
     const tooltip = `<div style="
         max-width:230px;padding:10px 13px;
@@ -52,8 +54,10 @@ function buildVisNode(node) {
         id:    node.id,
         label: abbreviateLabel(node.label, currentScale),
         title: tooltip,
-        size:  cfg.size,
-        shape: 'dot',
+        shape: 'box',
+        shapeProperties: { borderRadius: cfg.radius },
+        widthConstraint: { minimum: 60, maximum: cfg.maxW },
+        margin: { top: 9, right: 13, bottom: 9, left: 13 },
         color: {
             background: cfg.bg,
             border:     cfg.border,
@@ -62,30 +66,45 @@ function buildVisNode(node) {
         },
         font: {
             color:       isLearned ? '#050f1a' : cfg.border,
-            size:        12,
+            size:        cfg.fontSize,
             face:        'JetBrains Mono',
-            strokeWidth: 5,
-            strokeColor: isLearned ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0.98)',
+            strokeWidth: 4,
+            strokeColor: isLearned ? 'rgba(255,255,255,0)' : 'rgba(0,0,0,0.96)',
+            multi:       false,
         },
         borderWidth:         isLearned ? 3 : 2,
         borderWidthSelected: isLearned ? 4 : 3,
-        // 3-D depth: offset shadow gives sphere feel
         shadow: {
             enabled: true,
-            color:   cfg.glow + (isLearned ? '0.55)' : '0.50)'),
-            size:    isLearned ? 20 : (cat === 'root' ? 18 : cat === 'concept' ? 12 : 8),
-            x: 3, y: 3,
+            color:   cfg.glow + (isLearned ? '0.55)' : '0.45)'),
+            size:    isLearned ? 18 : (cat === 'root' ? 16 : cat === 'concept' ? 11 : 7),
+            x: 2, y: 2,
         },
     };
 }
 
 // ─── Zoom-aware label abbreviation ──────────────────────────
+// At normal zoom the full label shows inside the box.
+// Zooming out progressively shortens it so boxes stay readable.
 function abbreviateLabel(label, scale) {
-    const words = label.trim().split(/\s+/);
-    if (scale >= 0.75) return label;
-    if (scale >= 0.45) return words[0];
-    if (words.length === 1) return label.length > 4 ? label.slice(0, 3) + '.' : label;
-    return words.map(w => w[0].toUpperCase()).join('');
+    const t = label.trim();
+    if (scale >= 0.55) return t;                    // full label
+
+    if (scale >= 0.35) {                            // first ~12 chars of words
+        const words = t.split(/\s+/);
+        let out = '';
+        for (const w of words) {
+            const next = out ? out + ' ' + w : w;
+            if (next.length <= 12) out = next; else break;
+        }
+        return out || t.slice(0, 11) + '…';
+    }
+
+    // Very zoomed out — initials only
+    const ws = t.split(/\s+/);
+    return ws.length > 1
+        ? ws.map(w => w[0].toUpperCase()).join('')
+        : (t.length > 4 ? t.slice(0, 3) + '.' : t);
 }
 
 function refreshAllLabels() {
@@ -105,13 +124,32 @@ function initStarfield() {
     resize();
     window.addEventListener('resize', resize);
 
-    const stars = Array.from({ length: 280 }, () => ({
-        x: Math.random(), y: Math.random(),
-        r: 0.2 + Math.random() * 1.1,
-        phase: Math.random() * Math.PI * 2,
-        speed: 0.004 + Math.random() * 0.01,
-        color: Math.random() > 0.65 ? 'rgba(240,192,96,' : 'rgba(200,225,255,',
-    }));
+    // Each star has its own RANDOM fade lifecycle:
+    //   dormant  → slowly fading IN  → hold at peak → slowly fading OUT → dormant
+    // Duration and timing are randomised per star so they never pulse in sync.
+    function makeStarState() {
+        // States: 0=dormant, 1=fade-in, 2=hold, 3=fade-out
+        const dormantMs  = 3000 + Math.random() * 14000;  // 3-17s dark
+        const fadeInMs   = 800  + Math.random() * 2400;
+        const holdMs     = 400  + Math.random() * 2200;
+        const fadeOutMs  = 1000 + Math.random() * 3000;
+        return { dormantMs, fadeInMs, holdMs, fadeOutMs,
+                 state: 0, elapsed: Math.random() * dormantMs }; // stagger initial phase
+    }
+    const roll = () => Math.random();
+    const stars = Array.from({ length: 300 }, () => {
+        const r = roll();
+        const color = r > 0.80 ? 'rgba(240,192,96,' : r > 0.55 ? 'rgba(160,210,255,' : 'rgba(220,235,255,';
+        const bright = roll() > 0.84;
+        return {
+            x: roll(), y: roll(),
+            baseR: 0.3 + roll() * (bright ? 1.6 : 1.0),
+            bright,
+            color,
+            alpha: 0,
+            ...makeStarState(),
+        };
+    });
 
     const nebulae = [
         { x: 0.15, y: 0.25, r: 0.42, c: 'rgba(240,192,96,0.016)' },
@@ -119,8 +157,14 @@ function initStarfield() {
         { x: 0.52, y: 0.80, r: 0.30, c: 'rgba(74,222,128,0.014)' },
     ];
 
-    function draw() {
+    let last = 0;
+    function draw(ts) {
+        requestAnimationFrame(draw);
+        const dtMs = Math.min(ts - last, 80);   // cap delta so tab-blur doesn't skip ahead
+        last = ts;
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
         nebulae.forEach(n => {
             const g = ctx.createRadialGradient(
                 n.x * canvas.width, n.y * canvas.height, 0,
@@ -130,15 +174,46 @@ function initStarfield() {
             g.addColorStop(0, n.c); g.addColorStop(1, 'transparent');
             ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, canvas.height);
         });
+
         stars.forEach(s => {
-            s.phase += s.speed * 0.016;
-            const a = 0.2 + 0.6 * (0.5 + 0.5 * Math.sin(s.phase));
+            s.elapsed += dtMs;
+            // Advance through lifecycle
+            if (s.state === 0 && s.elapsed >= s.dormantMs) {
+                s.state = 1; s.elapsed = 0; s.alpha = 0;
+            } else if (s.state === 1) {
+                s.alpha = Math.min(1, s.elapsed / s.fadeInMs);
+                if (s.elapsed >= s.fadeInMs) { s.state = 2; s.elapsed = 0; }
+            } else if (s.state === 2) {
+                if (s.elapsed >= s.holdMs) { s.state = 3; s.elapsed = 0; }
+            } else if (s.state === 3) {
+                s.alpha = Math.max(0, 1 - s.elapsed / s.fadeOutMs);
+                if (s.elapsed >= s.fadeOutMs) {
+                    s.state = 0; s.elapsed = 0; s.alpha = 0;
+                    // Randomise next cycle so stars don't sync up over time
+                    Object.assign(s, makeStarState());
+                }
+            }
+
+            if (s.alpha <= 0.01) return;
+
+            const peakAlpha = s.bright ? 0.95 : 0.65;
+            const a      = s.alpha * peakAlpha;
+            const cx     = s.x * canvas.width;
+            const cy     = s.y * canvas.height;
+
+            if (s.bright && a > 0.3) {
+                const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, s.baseR * 7);
+                glow.addColorStop(0, s.color + (a * 0.22).toFixed(3) + ')');
+                glow.addColorStop(1, 'transparent');
+                ctx.fillStyle = glow;
+                ctx.beginPath(); ctx.arc(cx, cy, s.baseR * 7, 0, Math.PI * 2); ctx.fill();
+            }
+
             ctx.beginPath();
-            ctx.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI * 2);
-            ctx.fillStyle = s.color + a.toFixed(2) + ')';
+            ctx.arc(cx, cy, Math.max(0.1, s.baseR), 0, Math.PI * 2);
+            ctx.fillStyle = s.color + a.toFixed(3) + ')';
             ctx.fill();
         });
-        requestAnimationFrame(draw);
     }
     requestAnimationFrame(draw);
 }
@@ -176,6 +251,30 @@ function saveCurrentMap(isAuto = false) {
         btn.textContent = '✦ Saved!';
         btn.style.color = 'var(--gold)';
         setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1800);
+    }
+}
+
+// ─── Reset Structure helpers ─────────────────────────────────
+function applyPositions(posMap) {
+    if (!network || !currentData || !Object.keys(posMap).length) return;
+    const updates = currentData.nodes.map(n => {
+        const p = posMap[n.id];
+        return p ? { id: n.id, x: p.x, y: p.y } : null;
+    }).filter(Boolean);
+    network.body.data.nodes.update(updates);
+}
+
+function updateResetBtn() {
+    const btn = document.getElementById('reset-structure-btn');
+    if (!btn) return;
+    if (hasUndoState) {
+        btn.textContent = '↩ Undo Reset';
+        btn.classList.add('has-undo');
+        btn.title = 'Go back to your custom arrangement';
+    } else {
+        btn.textContent = '↺ Reset Structure';
+        btn.classList.remove('has-undo');
+        btn.title = 'Snap nodes back to original layout';
     }
 }
 
@@ -220,15 +319,17 @@ function renderSavedList() {
             <button class="saved-item-del" data-key="${key}">✕</button>
         </div>`;
     }).join('');
-    list.querySelectorAll('.saved-item').forEach(el => {
-        el.addEventListener('click', e => {
-            if (e.target.classList.contains('saved-item-del')) return;
-            const m = getSavedMaps()[el.dataset.key];
+    // Single event-delegation listener on the list instead of N per-item listeners
+    list.addEventListener('click', e => {
+        const item = e.target.closest('.saved-item');
+        if (!item) return;
+        if (e.target.classList.contains('saved-item-del')) {
+            e.stopPropagation();
+            deleteSavedMap(item.dataset.key);
+        } else {
+            const m = maps[item.dataset.key];   // reuse already-fetched maps object
             if (m) loadSavedMap(m);
-        });
-    });
-    list.querySelectorAll('.saved-item-del').forEach(btn => {
-        btn.addEventListener('click', e => { e.stopPropagation(); deleteSavedMap(btn.dataset.key); });
+        }
     });
 }
 
@@ -278,10 +379,35 @@ function setGraphTitle(goalText) {
 // ═══════════════════════════════════════════════════════════
 document.getElementById('generate-btn').addEventListener('click', generate);
 
+// ─── Client-side topic cache (saves tokens, instant reload) ─
+const CLIENT_CACHE_KEY = 'evernodes_topic_cache_v1';
+function getClientCache() {
+    try { return JSON.parse(sessionStorage.getItem(CLIENT_CACHE_KEY) || '{}'); } catch { return {}; }
+}
+function setClientCache(key, value) {
+    try {
+        const c = getClientCache();
+        c[key] = value;
+        // Keep only the last 20 entries
+        const keys = Object.keys(c);
+        if (keys.length > 20) delete c[keys[0]];
+        sessionStorage.setItem(CLIENT_CACHE_KEY, JSON.stringify(c));
+    } catch {}
+}
+
 async function generate() {
     const goal  = goalEl.value.trim();
     const prior = document.getElementById('prior').value.trim();
     if (!goal) { setStatus('Enter a topic to map.', true); goalEl.focus(); return; }
+
+    // Check client-side session cache first — zero network cost
+    const cacheKey = goal.toLowerCase().trim() + '::' + selectedLevel;
+    const clientHit = getClientCache()[cacheKey];
+    if (clientHit) {
+        learnedNodes = new Set(clientHit.known || []);
+        renderGraph(clientHit, goal, {});
+        return;
+    }
 
     setStatus('Building your knowledge map…');
     setLoading(true);
@@ -294,17 +420,27 @@ async function generate() {
         });
         const data = await res.json();
 
-        // Handle invalid-topic responses (junk input or model refusal)
+        if (data.error === 'rate_limit') {
+            setStatus(
+                '⚠️ API daily limit reached. Update GROQ_API_KEY in your .env file with a new key from console.groq.com, then restart Flask.',
+                true
+            );
+            setLoading(false);
+            return;
+        }
         if (data.error === 'invalid_topic') {
-            setStatus(data.message || 'That doesn\'t look like a learnable topic. Try again.', true);
+            setStatus(data.message || 'That does not look like a learnable topic. Try again.', true);
             setLoading(false);
             return;
         }
         if (data.error) {
-            setStatus(`Error: ${data.message || 'Generation failed.'}`, true);
+            setStatus('Error: ' + (data.message || 'Generation failed.'), true);
             setLoading(false);
             return;
         }
+
+        // Store in session cache so same topic is instant next time
+        setClientCache(cacheKey, data);
 
         learnedNodes = new Set(data.known || []);
         renderGraph(data, goal, {});
@@ -333,6 +469,9 @@ function renderGraph(data, goal, savedPositions) {
     currentGoal   = goal;
     currentScale  = 1.0;
     selectedNodeId = null;
+    defaultPositions = {};
+    userPositions    = {};
+    hasUndoState     = false;
 
     document.getElementById('input-screen').style.display = 'none';
     document.getElementById('graph-screen').classList.remove('hidden');
@@ -383,12 +522,12 @@ function renderGraph(data, goal, savedPositions) {
     network = new vis.Network(container, { nodes: visNodes, edges: visEdges }, {
         layout: {
             hierarchical: {
-                enabled:              !hasSavedPos,  // free layout when positions restored
+                enabled:              !hasSavedPos,
                 direction:            'UD',
                 sortMethod:           'directed',
-                levelSeparation:      145,
-                nodeSpacing:          165,
-                treeSpacing:          220,
+                levelSeparation:      195,
+                nodeSpacing:          210,
+                treeSpacing:          270,
                 blockShifting:        true,
                 edgeMinimization:     true,
                 parentCentralization: true,
@@ -398,9 +537,9 @@ function renderGraph(data, goal, savedPositions) {
             enabled: !hasSavedPos,
             hierarchicalRepulsion: {
                 centralGravity: 0.0,
-                springLength:   130,
+                springLength:   175,
                 springConstant: 0.01,
-                nodeDistance:   160,
+                nodeDistance:   200,
                 damping:        0.09,
             },
             solver:        'hierarchicalRepulsion',
@@ -443,10 +582,14 @@ function renderGraph(data, goal, savedPositions) {
     const stabBar = document.getElementById('stabilize-bar');
 
     if (hasSavedPos) {
-        // Skip stabilisation entirely — positions are already set
+        // Restore saved positions — no stabilisation needed
         overlay.style.opacity = '0';
         setTimeout(() => { overlay.style.display = 'none'; }, 100);
         network.setOptions({ physics: { enabled: false } });
+        // Saved positions ARE the default for this session
+        defaultPositions = { ...savedPositions };
+        hasUndoState     = false;
+        updateResetBtn();
     } else {
         overlay.style.display  = 'flex';
         overlay.style.opacity  = '1';
@@ -458,8 +601,11 @@ function renderGraph(data, goal, savedPositions) {
             stabBar.style.width = '100%';
             overlay.style.opacity = '0';
             setTimeout(() => { overlay.style.display = 'none'; }, 400);
-            // Fully disable physics — nodes stay exactly where they are after this
             network.setOptions({ physics: { enabled: false } });
+            // Capture the auto-layout as the "default" positions
+            defaultPositions = network.getPositions(data.nodes.map(n => n.id));
+            hasUndoState     = false;
+            updateResetBtn();
         });
     }
 
@@ -478,6 +624,24 @@ function renderGraph(data, goal, savedPositions) {
         network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
     };
 
+    // Reset Structure / Undo Reset
+    document.getElementById('reset-structure-btn').onclick = () => {
+        if (!network || !currentData) return;
+        if (hasUndoState) {
+            // Currently showing default — undo back to user layout
+            applyPositions(userPositions);
+            hasUndoState = false;
+            updateResetBtn();
+        } else {
+            // Save current user positions, then snap to default
+            userPositions = network.getPositions(currentData.nodes.map(n => n.id));
+            applyPositions(defaultPositions);
+            hasUndoState = true;
+            updateResetBtn();
+        }
+        network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+    };
+
     // Build explorer list — nodes that have children (concept + root)
     explorerList = data.nodes
         .filter(n => data.edges.some(e => e.from === n.id))
@@ -485,6 +649,16 @@ function renderGraph(data, goal, savedPositions) {
 
     renderSavedList();
     setLoading(false);
+
+    // Size particle canvas to match graph container
+    const pCanvas = document.getElementById('particle-canvas');
+    const gcEl    = document.getElementById('graph-container');
+    function sizeParticleCanvas() {
+        pCanvas.width  = gcEl.clientWidth;
+        pCanvas.height = gcEl.clientHeight;
+    }
+    sizeParticleCanvas();
+    window.addEventListener('resize', sizeParticleCanvas);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -527,9 +701,84 @@ function updateLearnBtn(btn, isLearned) {
     btn.className   = ('learn-btn ' + (btn.classList.contains('sm') ? 'sm' : '') + (isLearned ? ' is-learned' : '')).trim();
 }
 
+// ─── Convert URLs to clickable hyperlinks ───────────────────
+function linkify(text) {
+    return text.replace(/https?:\/\/[^\s,)"<]+/g, url =>
+        `<a href="${url}" target="_blank" rel="noopener noreferrer" class="resource-link">${url}</a>`
+    );
+}
+
 // ═══════════════════════════════════════════════════════════
-// PORTAL EXPLORER  — enter a node
+// PORTAL EXPLORER + DETAIL PARSER
 // ═══════════════════════════════════════════════════════════
+function parseDetail(raw) {
+    if (!raw) return '<p class="detail-intro">No detail available.</p>';
+
+    // Support both the new || separator format AND legacy \n format
+    let parts;
+    if (raw.includes('||')) {
+        parts = raw.split('||').map(p => p.trim()).filter(Boolean);
+    } else {
+        // Legacy: split on real newlines
+        parts = raw.split(/\n/).map(p => p.trim()).filter(Boolean);
+    }
+
+    let intro    = '';
+    const bullets= [];
+    let closing  = '';
+    let resources= '';
+
+    for (const part of parts) {
+        const upper = part.toUpperCase();
+        if (upper.startsWith('INTRO:')) {
+            intro = part.replace(/^intro:\s*/i, '');
+        } else if (upper.startsWith('BULLET:')) {
+            bullets.push(part.replace(/^bullet:\s*/i, ''));
+        } else if (upper.startsWith('NEXT:')) {
+            closing = part.replace(/^next:\s*/i, '');
+        } else if (upper.startsWith('RESOURCE:')) {
+            resources = part.replace(/^resource:\s*/i, '');
+        } else if (part.startsWith('•') || part.startsWith('-')) {
+            // Legacy bullet format
+            bullets.push(part.replace(/^[•\-]\s*/, ''));
+        } else if (part.toLowerCase().startsWith('start here:')) {
+            resources = part.replace(/^start here:\s*/i, '');
+        } else if (!intro) {
+            intro = part;
+        } else if (!closing && bullets.length > 0) {
+            closing = part;
+        }
+    }
+
+    let html = '<div class="detail-body">';
+
+    if (intro) {
+        html += `<p class="detail-intro">${intro}</p>`;
+    }
+
+    if (bullets.length) {
+        html += '<div class="detail-bullets">';
+        bullets.forEach(b => {
+            html += `<div class="bullet-item"><span class="bullet-dot">◆</span><span>${b}</span></div>`;
+        });
+        html += '</div>';
+    }
+
+    if (closing) {
+        html += `<p class="detail-closing">${closing}</p>`;
+    }
+
+    if (resources) {
+        html += `<div class="detail-resources">
+            <div class="detail-resources-label">📍 Start Here</div>
+            <div class="detail-resources-text">${linkify(resources)}</div>
+        </div>`;
+    }
+
+    html += '</div>';
+    return html;
+}
+
 function openPortal(nodeId) {
     if (!currentData) return;
     explorerIndex = explorerList.findIndex(n => n.id === nodeId);
@@ -562,7 +811,7 @@ function renderPortal() {
     labelEl.textContent = node.label;
     labelEl.style.color = isLearned ? '#90d0f8' : cfg.border;
 
-    document.getElementById('portal-parent-detail').textContent = node.detail || node.description;
+    document.getElementById('portal-parent-detail').innerHTML = parseDetail(node.detail || node.description);
 
     const markBtn = document.getElementById('portal-mark-btn');
     updateLearnBtn(markBtn, isLearned);
@@ -580,7 +829,7 @@ function renderPortal() {
             const childCfg = NODE_CFG[child.category || 'detail'] || NODE_CFG.detail;
             return `<div class="child-card">
                 <div class="child-card-label" style="color:${childCfg.border};">${child.label}</div>
-                <div class="child-card-detail">${child.detail || child.description}</div>
+                <div class="child-card-detail">${parseDetail(child.detail || child.description)}</div>
             </div>`;
         }).join('');
     }
@@ -599,11 +848,105 @@ function closePortal() {
 }
 
 // ═══════════════════════════════════════════════════════════
+// PARTICLE BURST — fires from node position when marked learned
+// ═══════════════════════════════════════════════════════════
+(function() {
+    const COLORS = ['rgba(240,192,96,', 'rgba(255,255,255,', 'rgba(74,222,128,', 'rgba(64,216,232,'];
+    let animId = null;
+    const particles = [];
+
+    function spawnBurst(cx, cy) {
+        const count = 28;
+        for (let i = 0; i < count; i++) {
+            const angle = (Math.PI * 2 * i / count) + (Math.random() - 0.5) * 0.4;
+            const spd   = 1.5 + Math.random() * 4.5;
+            const size  = 2 + Math.random() * 3.5;
+            particles.push({
+                x: cx, y: cy,
+                vx: Math.cos(angle) * spd,
+                vy: Math.sin(angle) * spd,
+                life: 1.0,
+                decay: 0.022 + Math.random() * 0.022,
+                size,
+                color: COLORS[Math.floor(Math.random() * COLORS.length)],
+                shape: Math.random() > 0.5 ? 'circle' : 'star',
+            });
+        }
+        // Sparkle ring
+        for (let i = 0; i < 8; i++) {
+            const a = (Math.PI * 2 * i / 8);
+            const spd = 0.6 + Math.random() * 1.2;
+            particles.push({
+                x: cx, y: cy,
+                vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+                life: 1.0, decay: 0.014 + Math.random() * 0.01,
+                size: 1.5 + Math.random() * 2,
+                color: 'rgba(255,255,255,', shape: 'circle',
+            });
+        }
+        if (!animId) loop();
+    }
+
+    function loop() {
+        const canvas = document.getElementById('particle-canvas');
+        if (!canvas) { animId = null; return; }
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x    += p.vx;
+            p.y    += p.vy;
+            p.vy   += 0.06;  // gravity
+            p.life -= p.decay;
+            if (p.life <= 0) { particles.splice(i, 1); continue; }
+            const a = p.life * 0.9;
+            ctx.beginPath();
+            if (p.shape === 'star') {
+                const s = p.size * p.life;
+                for (let j = 0; j < 4; j++) {
+                    const ang = Math.PI / 2 * j + p.life * 3;
+                    ctx.moveTo(p.x, p.y);
+                    ctx.lineTo(p.x + Math.cos(ang) * s * 1.8, p.y + Math.sin(ang) * s * 1.8);
+                }
+                ctx.strokeStyle = p.color + a.toFixed(2) + ')';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            } else {
+                ctx.arc(p.x, p.y, Math.max(0.3, p.size * p.life), 0, Math.PI * 2);
+                ctx.fillStyle = p.color + a.toFixed(2) + ')';
+                ctx.fill();
+            }
+        }
+
+        if (particles.length > 0) {
+            animId = requestAnimationFrame(loop);
+        } else {
+            animId = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    window.burstParticles = function(nodeId) {
+        if (!network) return;
+        try {
+            const canvasPos = network.getPositions([nodeId])[nodeId];
+            if (!canvasPos) return;
+            const domPos = network.canvasToDOM(canvasPos);
+            spawnBurst(domPos.x, domPos.y);
+        } catch {}
+    };
+})();
+
+// ═══════════════════════════════════════════════════════════
 // TOGGLE LEARNED
 // ═══════════════════════════════════════════════════════════
 function toggleLearned(nodeId) {
     if (learnedNodes.has(nodeId)) learnedNodes.delete(nodeId);
-    else learnedNodes.add(nodeId);
+    else {
+        learnedNodes.add(nodeId);
+        window.burstParticles(nodeId);
+    }
 
     if (network && currentData) {
         const node = currentData.nodes.find(n => n.id === nodeId);
@@ -637,6 +980,9 @@ function updateProgress() {
     const learned = learnedNodes.size;
     document.getElementById('progress-text').textContent = `${learned} / ${total} learned`;
     document.getElementById('progress-bar').style.width  = (total > 0 ? Math.round(learned / total * 100) : 0) + '%';
+    if (total > 0 && learned === total) {
+        setTimeout(() => showCongrats(currentGoal), 500);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -660,6 +1006,120 @@ document.getElementById('back-btn').addEventListener('click', () => {
 });
 
 document.getElementById('save-btn').addEventListener('click', () => saveCurrentMap(false));
+
+// ═══════════════════════════════════════════════════════════
+// HAMBURGER SIDEBAR TOGGLE
+// ═══════════════════════════════════════════════════════════
+(function() {
+    // Inject the backdrop element once
+    const backdrop = document.createElement('div');
+    backdrop.id = 'sidebar-backdrop';
+    document.getElementById('input-screen').appendChild(backdrop);
+
+    const sidebar = document.getElementById('saved-sidebar');
+    const toggleBtn = document.getElementById('sidebar-toggle');
+    const closeBtn  = document.getElementById('sidebar-close');
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+        backdrop.classList.add('active');
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        backdrop.classList.remove('active');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+    closeBtn.addEventListener('click', closeSidebar);
+    backdrop.addEventListener('click', closeSidebar);
+})();
+
+// ═══════════════════════════════════════════════════════════
+// CONGRATULATIONS + SHOOTING STARS
+// ═══════════════════════════════════════════════════════════
+let _congratsShown = false;
+
+function showCongrats(topic) {
+    if (_congratsShown) return;
+    _congratsShown = true;
+
+    const overlay = document.getElementById('congrats-overlay');
+    document.getElementById('congrats-topic').textContent = topic || currentGoal;
+    overlay.classList.remove('hidden');
+
+    // Launch shooting-star canvas
+    const canvas = document.getElementById('shooting-canvas');
+    const ctx    = canvas.getContext('2d');
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const shooters = [];
+    function spawnStar() {
+        const angle = (-20 - Math.random() * 25) * Math.PI / 180;
+        const spd   = 6 + Math.random() * 10;
+        shooters.push({
+            x:     Math.random() * canvas.width,
+            y:     Math.random() * canvas.height * 0.5,
+            vx:    Math.cos(angle) * spd,
+            vy:    Math.sin(angle) * spd,
+            spd,                               // stored so drawShooters can use it
+            len:   60 + Math.random() * 120,
+            alpha: 0.9 + Math.random() * 0.1,
+            color: Math.random() > 0.5 ? 'rgba(240,192,96,' : 'rgba(200,230,255,',
+            life:  1.0,
+            decay: 0.012 + Math.random() * 0.014,
+        });
+    }
+
+    // Burst of 12 on open, then random trickle
+    for (let i = 0; i < 12; i++) setTimeout(spawnStar, i * 120);
+    const trickle = setInterval(() => {
+        if (Math.random() > 0.35) spawnStar();
+    }, 350);
+
+    let animId;
+    function drawShooters() {
+        animId = requestAnimationFrame(drawShooters);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = shooters.length - 1; i >= 0; i--) {
+            const s = shooters[i];
+            s.x    += s.vx;
+            s.y    += s.vy;
+            s.life -= s.decay;
+            if (s.life <= 0 || s.x > canvas.width + 50 || s.y > canvas.height + 50) {
+                shooters.splice(i, 1); continue;
+            }
+            const a = s.alpha * s.life;
+            const grad = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * s.len / s.spd, s.y - s.vy * s.len / s.spd);
+            grad.addColorStop(0, s.color + a.toFixed(2) + ')');
+            grad.addColorStop(1, s.color + '0)');
+            ctx.beginPath();
+            ctx.moveTo(s.x, s.y);
+            ctx.lineTo(s.x - s.vx * (s.len / 10), s.y - s.vy * (s.len / 10));
+            ctx.strokeStyle = grad;
+            ctx.lineWidth   = 1.5 + s.life;
+            ctx.stroke();
+            // tiny bright head
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = s.color + a.toFixed(2) + ')';
+            ctx.fill();
+        }
+    }
+    drawShooters();
+
+    document.getElementById('congrats-close').onclick = () => {
+        overlay.classList.add('hidden');
+        clearInterval(trickle);
+        cancelAnimationFrame(animId);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        _congratsShown = false;
+    };
+}
 
 // ═══════════════════════════════════════════════════════════
 // INIT

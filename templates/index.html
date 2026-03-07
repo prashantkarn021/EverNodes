@@ -20,10 +20,16 @@
     <!-- ════════════════ INPUT SCREEN ════════════════ -->
     <div id="input-screen">
 
+        <!-- Hamburger toggle for saved maps sidebar -->
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Your saved maps">
+            <span></span><span></span><span></span>
+        </button>
+
         <div id="saved-sidebar">
             <div class="sidebar-header">
                 <span class="sidebar-icon">✦</span>
                 <span>Saved Maps</span>
+                <button id="sidebar-close" class="sidebar-close-btn" title="Close">✕</button>
             </div>
             <div id="saved-list">
                 <p class="empty-state">No saved maps yet.<br>Generate your first one!</p>
@@ -102,7 +108,10 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-                <button id="fit-btn"  class="action-btn">⊹ Reset View</button>
+                <div class="reset-group">
+                    <button id="fit-btn" class="action-btn reset-btn" title="Fit all nodes into view">⊹ Reset View</button>
+                    <button id="reset-structure-btn" class="action-btn reset-btn" title="Snap back to original layout">↺ Reset Structure</button>
+                </div>
                 <button id="save-btn" class="action-btn">✦ Save Map</button>
             </div>
         </div>
@@ -113,8 +122,9 @@
             <div class="legend-item"><span class="dot detail-dot"></span>Detail</div>
             <div class="legend-sep">·</div>
             <div class="legend-item"><span class="dot learned-dot"></span>Learned — turns white</div>
+            <div class="legend-item"><span class="dot deep-dot"></span>Deep Concept</div>
             <div class="legend-sep">·</div>
-            <div class="legend-hint">Click to preview · Double-click to enter · Drag to rearrange</div>
+            <div class="legend-hint">Click to preview · Double-click to enter · Drag to rearrange · Zoom out to abbreviate</div>
         </div>
 
         <div id="stabilize-overlay">
@@ -128,6 +138,7 @@
         </div>
 
         <div id="graph-container"></div>
+        <canvas id="particle-canvas"></canvas>
 
         <!-- ══ PORTAL — immersive node drill-down ══ -->
         <div id="portal-overlay" class="hidden">
@@ -150,7 +161,7 @@
                 <div id="portal-parent">
                     <div id="portal-parent-cat" class="cat-badge"></div>
                     <h2 id="portal-parent-label"></h2>
-                    <p id="portal-parent-detail" class="portal-detail-text"></p>
+                    <div id="portal-parent-detail" class="portal-detail-text"></div>
                     <button id="portal-mark-btn" class="learn-btn">✦ Mark Learned</button>
                 </div>
 
@@ -190,6 +201,18 @@
             </div>
         </div>
 
+    </div>
+</div>
+
+<!-- Completion congratulations overlay -->
+<div id="congrats-overlay" class="hidden">
+    <canvas id="shooting-canvas"></canvas>
+    <div id="congrats-card">
+        <div class="congrats-stars">✦ ✦ ✦</div>
+        <h2 id="congrats-title">You've Mastered It!</h2>
+        <p id="congrats-topic"></p>
+        <p class="congrats-sub">Every node explored. Every concept learned. Keep going.</p>
+        <button id="congrats-close" class="primary-btn" style="margin-top:18px;width:fit-content;margin-left:auto;margin-right:auto;">Continue Exploring ✦</button>
     </div>
 </div>
 
