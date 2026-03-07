@@ -76,6 +76,7 @@ button:disabled { background: #334155; cursor: not-allowed; }
 #status { color: #94a3b8; font-size: 0.9rem; min-height: 20px; }
 
 #graph-screen {
+    display: flex;
     flex-direction: column;
     height: 100vh;
 }
@@ -121,6 +122,8 @@ button:disabled { background: #334155; cursor: not-allowed; }
 #graph-container {
     flex: 1;
     background: #0f172a;
+    height: calc(100vh - 140px);
+    overflow: hidden;
 }
 
 #node-info {
