@@ -533,48 +533,13 @@ function renderGraph(data, goal, savedPositions) {
                 parentCentralization: true,
             },
         },
-        physics: {
-            enabled: !hasSavedPos,
-            hierarchicalRepulsion: {
-                centralGravity: 0.0,
-                springLength:   175,
-                springConstant: 0.01,
-                nodeDistance:   200,
-                damping:        0.09,
-            },
-            solver:        'hierarchicalRepulsion',
-            stabilization: { enabled: true, iterations: 200, updateInterval: 20 },
-        },
-        interaction: {
-            hover:        true,
-            tooltipDelay: 180,
-            zoomView:     true,
-            dragView:     true,
-            dragNodes:    true,   // ← nodes stay exactly where dropped
-            zoomMin:      0.12,
-            zoomMax:      4.0,
-        },
-        nodes:  { borderWidth: 2 },
-        edges:  { hoverWidth: 3 },
-    });
-
-    // Zoom → abbreviate labels
-    network.on('zoom', p => { currentScale = p.scale; refreshAllLabels(); });
-
-    // Single click → bottom panel
-    network.on('click', p => {
-        if (p.nodes.length > 0) openPanel(p.nodes[0]);
-        else closePanel();
-    });
-
-    // Double-click → portal
-    network.on('doubleClick', p => {
-        if (p.nodes.length > 0) openPortal(p.nodes[0]);
-    });
-
-    // After any drag → schedule auto-save (positions change)
-    network.on('dragEnd', p => {
-        if (p.nodes.length > 0) scheduleAutoSave();
+        physics: false,
+        autoResize: false,
+        interaction: { 
+            hover: true,
+            dragView: true,
+            zoomView: false 
+        }
     });
 
     // Stabilisation overlay
