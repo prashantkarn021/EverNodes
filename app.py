@@ -25,9 +25,9 @@ client = Groq(api_key=_raw_key or "invalid")
 _TOPIC_CACHE: dict = {}
 
 TOKEN_BUDGET = {
-    "beginner":     3500,
-    "intermediate": 5000,
-    "expert":       7000,
+    "beginner":     5000,
+    "intermediate": 7000,
+    "expert":       9000,
 }
 
 
@@ -104,9 +104,11 @@ def build_prompt(goal: str, prior: str, level: str) -> str:
     # Depth and breadth guidance by level — Groq decides exact counts
     if level == "beginner":
         structure_guide = (
-            "Build 2 tiers below the root (tier 1 = main concepts, tier 2 = their details). "
-            "Use 3-5 concept nodes. Each concept gets 1-2 child detail nodes. "
-            "Keep it simple — fewer, well-explained nodes beat many shallow ones."
+            "Build 2-3 tiers below the root (tier 1 = main concepts, tier 2 = their details, tier 3 = optional deeper details). "
+            "Use 5-8 concept nodes. Each concept gets 2-3 child detail nodes. "
+            "Where a concept genuinely has a deeper layer worth explaining, add 1-2 tier-3 deep nodes beneath it. "
+            "Prioritise breadth — cover the topic well across multiple concepts before going deep. "
+            "Plain language throughout — no jargon, no assumptions."
         )
     elif level == "intermediate":
         structure_guide = (
