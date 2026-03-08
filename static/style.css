@@ -149,7 +149,6 @@ input[type="text"]::placeholder { color: var(--text3); }
 input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 0 3px rgba(240,192,96,0.08); }
 
 #graph-screen {
-    display: flex;
     flex-direction: column;
     height: 100vh;
 }
@@ -447,8 +446,6 @@ input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 
 #graph-container {
     flex: 1;
     background: #0f172a;
-    height: calc(100vh - 140px);
-    overflow: hidden;
 }
 #sidebar-backdrop.active { display: block; }
 
