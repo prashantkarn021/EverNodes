@@ -1,9 +1,3 @@
-/* ═══════════════════════════════════════════════════════════
-   EVERNODES — KNOWLEDGE MAP
-   Input screen: gold accent (restored)
-   Nodes: category colours (gold/cyan/green) + white when learned
-   ═══════════════════════════════════════════════════════════ */
-
 :root {
     /* Background shades */
     --void:   #020408;
@@ -154,22 +148,9 @@ input[type="text"] {
 input[type="text"]::placeholder { color: var(--text3); }
 input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 0 3px rgba(240,192,96,0.08); }
 
-/* Level tabs — gold accent */
-.level-tabs { display: flex; gap: 5px; }
-.level-tab { flex: 1; padding: 8px 6px; border: 1px solid var(--rim); border-radius: var(--radius); background: rgba(255,255,255,0.02); color: var(--text3); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer; transition: all 0.16s; }
-.level-tab:hover { border-color: var(--rim2); color: var(--text2); }
-.level-tab.active[data-level="beginner"]     { background: rgba(240,192,96,0.10); border-color: rgba(240,192,96,0.40); color: var(--gold); }
-.level-tab.active[data-level="intermediate"] { background: rgba(64,216,232,0.08); border-color: rgba(64,216,232,0.35); color: var(--cyan); }
-.level-tab.active[data-level="expert"]       { background: rgba(157,136,255,0.10); border-color: rgba(157,136,255,0.38); color: #9d88ff; }
-
-/* Primary button — gold */
-.primary-btn {
-    background: linear-gradient(135deg, var(--gold) 0%, var(--gold2) 100%);
-    color: #06060a; border: none; border-radius: var(--radius);
-    padding: 12px 24px; font-family: var(--font-head); font-size: 0.92rem; font-weight: 700;
-    letter-spacing: 0.02em; cursor: pointer; transition: all 0.2s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    box-shadow: 0 0 18px rgba(240,192,96,0.22), 0 2px 8px rgba(0,0,0,0.5); flex-shrink: 0;
+#graph-screen {
+    flex-direction: column;
+    height: 100vh;
 }
 #graph-screen {
     flex-direction: column;
@@ -466,11 +447,9 @@ input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 
 }
 .sidebar-close-btn:hover { color: #f87171; }
 
-/* Backdrop — tap outside to close sidebar */
-#sidebar-backdrop {
-    display: none;
-    position: fixed; inset: 0; z-index: 45;
-    background: rgba(0,0,0,0.4);
+#graph-container {
+    flex: 1;
+    background: #0f172a;
 }
 
 #graph-container {
