@@ -85,8 +85,8 @@ body {
 
 /* Sidebar */
 #saved-sidebar {
-  width: 255px;
-  min-width: 255px;
+  width: 280px;
+  min-width: 280px;
   background: rgba(6, 9, 18, 0.92);
   backdrop-filter: blur(14px);
   border-right: 1px solid rgba(255, 255, 255, 0.05);
@@ -111,14 +111,14 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 16px 18px 16px 18px;
+  padding: 22px 18px 18px 30px;
   font-family: var(--font-head);
-  font-size: 0.76rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
+  font-size: 1.00rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(141, 201, 218, 0.05);
 }
 .sidebar-icon {
   color: var(--gold);
@@ -1473,7 +1473,7 @@ button:disabled {
 /* Hamburger button — 3 strips */
 .sidebar-toggle-btn {
   position: fixed;
-  top: 22px;
+  top: 18px;
   left: 18px;
   z-index: 60;
   background: rgba(10, 14, 24, 0.88);
@@ -1487,11 +1487,12 @@ button:disabled {
   align-items: center;
   transition:
     border-color 0.18s,
-    background 0.18s;
+    background 0.18s,
+    opacity 0.25s;
 }
 .sidebar-toggle-btn span {
   display: block;
-  width: 20px;
+  width: 18px;
   height: 2px;
   background: var(--text2);
   border-radius: 2px;
@@ -1503,6 +1504,12 @@ button:disabled {
 }
 .sidebar-toggle-btn:hover span {
   background: var(--gold);
+
+}
+
+.sidebar-toggle-btn[aria-expanded="true"] {
+  opacity: 0.12;
+  pointer-events: none;
 }
 
 /* Close X inside sidebar header */
