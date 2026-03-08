@@ -14,13 +14,13 @@
 <body>
 
 <canvas id="starfield-canvas"></canvas>
+<canvas id="confetti-canvas"></canvas>
 
 <div id="app">
 
     <!-- ════════════════ INPUT SCREEN ════════════════ -->
     <div id="input-screen">
 
-        <!-- Hamburger toggle for saved maps sidebar -->
         <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Your saved maps">
             <span></span><span></span><span></span>
         </button>
@@ -46,14 +46,12 @@
                     <div class="brand-mark">✦</div>
                 </div>
                 <h1>EverNodes</h1>
-                <!-- Restored original subtitle -->
                 <p class="tagline">Every subject is a cosmos. <em>Enter it.</em></p>
             </div>
 
             <div class="form-card">
                 <div class="input-row">
                     <label>What do you want to learn?</label>
-                    <!-- No scrollbar, overflow hidden, fixed height -->
                     <textarea id="goal" rows="3"
                         placeholder="e.g. Machine Learning, Ancient Rome, Jazz Theory…"></textarea>
                 </div>
@@ -95,6 +93,7 @@
                     <span id="graph-title" class="topic-title"></span>
                     <span id="level-badge" class="level-chip"></span>
                 </div>
+                <div id="dive-breadcrumb" class="dive-breadcrumb hidden"></div>
             </div>
             <div class="topbar-right">
                 <div class="progress-wrap">
@@ -115,6 +114,7 @@
                     <button id="reset-structure-btn" class="action-btn reset-btn" title="Snap back to original layout">↺ Reset Structure</button>
                 </div>
                 <button id="save-btn" class="action-btn">✦ Save Map</button>
+                <button id="flowchart-toggle-btn" class="action-btn">⊞ Map</button>
             </div>
         </div>
 
@@ -139,10 +139,21 @@
             </div>
         </div>
 
-        <div id="graph-container"></div>
-        <canvas id="particle-canvas"></canvas>
+        <div id="graph-area">
+            <div id="graph-container"></div>
+            <canvas id="particle-canvas"></canvas>
 
-        <!-- ══ PORTAL — immersive node drill-down ══ -->
+            <!-- Live flowchart sidebar -->
+            <div id="flowchart-sidebar" class="flowchart-sidebar open">
+                <div class="flowchart-sidebar-header">
+                    <span class="flowchart-title">✦ Structure Map</span>
+                    <button id="flowchart-close-btn" class="flowchart-close-btn">✕</button>
+                </div>
+                <div id="flowchart-content" class="flowchart-content"></div>
+            </div>
+        </div>
+
+        <!-- ══ PORTAL ══ -->
         <div id="portal-overlay" class="hidden">
             <div id="portal-backdrop"></div>
             <div id="portal-frame">
@@ -164,7 +175,10 @@
                     <div id="portal-parent-cat" class="cat-badge"></div>
                     <h2 id="portal-parent-label"></h2>
                     <div id="portal-parent-detail" class="portal-detail-text"></div>
-                    <button id="portal-mark-btn" class="learn-btn">✦ Mark Learned</button>
+                    <div class="portal-parent-actions">
+                        <button id="portal-mark-btn" class="learn-btn">✦ Mark Learned</button>
+                        <button id="portal-dive-btn" class="dive-btn hidden">⬢ Dive Deeper</button>
+                    </div>
                 </div>
 
                 <div id="portal-children-section">
@@ -193,6 +207,7 @@
                             <h3 id="panel-label"></h3>
                         </div>
                         <div class="panel-btns">
+                            <button id="panel-dive-btn" class="dive-btn sm hidden">⬢ Dive</button>
                             <button id="panel-enter-btn" class="ghost-btn sm">Enter ↗</button>
                             <button id="panel-learn-btn" class="learn-btn sm">✦ Mark Learned</button>
                         </div>
