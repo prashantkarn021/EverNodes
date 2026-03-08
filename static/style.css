@@ -171,6 +171,10 @@ input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 
     display: flex; align-items: center; justify-content: center; gap: 8px;
     box-shadow: 0 0 18px rgba(240,192,96,0.22), 0 2px 8px rgba(0,0,0,0.5); flex-shrink: 0;
 }
+#graph-screen {
+    flex-direction: column;
+    height: 100vh;
+}
 .primary-btn:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(240,192,96,0.38), 0 4px 14px rgba(0,0,0,0.5); }
 .primary-btn:disabled { background: var(--surf2); color: var(--text3); cursor: not-allowed; transform: none; box-shadow: none; }
 .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid rgba(0,0,0,0.25); border-top-color: rgba(0,0,0,0.8); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
@@ -467,6 +471,11 @@ input[type="text"]:focus { border-color: rgba(240,192,96,0.45); box-shadow: 0 0 
     display: none;
     position: fixed; inset: 0; z-index: 45;
     background: rgba(0,0,0,0.4);
+}
+
+#graph-container {
+    flex: 1;
+    background: #0f172a;
 }
 #sidebar-backdrop.active { display: block; }
 
