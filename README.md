@@ -40,7 +40,7 @@ EverNodes is an interactive, AI-powered knowledge mapping tool. Enter any topic 
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/your-username/EverNodes.git
+git clone https://github.com/prashantkarn021/EverNodes.git
 cd EverNodes
 ```
 
@@ -163,7 +163,7 @@ EverNodes uses a **two-layer caching system** to minimize Groq API usage:
 
 ### Server-side (in-memory, `_TOPIC_CACHE`)
 - Exact match: same topic + level returns instantly
-- **Fuzzy match** (new): checks substring containment, word-set overlap (≥ 75%), and sequence similarity (≥ 82%) — so *"ML"*, *"machine learning"*, and *"Machine Learning basics"* all resolve to the same cached map
+- **Fuzzy match**: checks substring containment, word-set overlap (≥ 75%), and sequence similarity (≥ 82%) — so *"ML"*, *"machine learning"*, and *"Machine Learning basics"* all resolve to the same cached map
 - Response includes `matched_topic` so the UI can inform you which cached entry was used
 
 ### Client-side (`sessionStorage`)
@@ -229,6 +229,19 @@ This project is licensed under the terms in the [LICENSE](LICENSE) file.
 
 ---
 
+## 👥 Team Credit
+
+EverNodes was built by a team of three.
+
+| Contributor | Focus | Key contributions |
+|---|---|---|
+| **[Prashant Karn](https://github.com/prashantkarn021)** | Backend & AI integration | Flask server and Groq API calls, fuzzy topic caching (server-side), LLM JSON repair and validation, input validation, per-level token budgets |
+| **[Lavie](https://github.com/Laviedotone)** | Graph & interaction | vis.js graph rendering, node click/double-click behavior, Portal detail view, Deep Dive navigation and breadcrumbs, Structure Map sidebar |
+| **[Anurag](https://github.com/Anuragkarn4)** | UI/UX & user features | CSS design system and starfield theme, depth-level selector, Mark Learned with confetti and the congratulations overlay, saved maps with auto-save and search |
+
+---
+
 <p align="center">
-  <em>Built with ✦ and curiosity.</em>
+  <em>Every question is a new star. ✦<br>
+  Built by learners, for learners.</em>
 </p>
